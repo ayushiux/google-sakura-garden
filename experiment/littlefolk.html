@@ -19,6 +19,9 @@
 h1{font-size:clamp(56px,5.4vw,80px);letter-spacing:-4px;line-height:1.08}
 @media(max-width:1100px){h1{font-size:clamp(46px,6vw,66px);letter-spacing:-3px}}
 @media(max-width:760px){h1{font-size:clamp(38px,10vw,64px);letter-spacing:-2px}.you-word svg{height:14px;bottom:-8px}}
+.game-overlay .button{pointer-events:auto;margin-top:12px;min-height:42px;padding:9px 20px;font-size:12px}
+.game-overlay.hidden{visibility:hidden;pointer-events:none}
+.game-overlay>span#game-overlay-caption{font:10px var(--mono);color:var(--muted);display:block}
 
 </style>
 </head>
@@ -76,8 +79,8 @@ h1{font-size:clamp(56px,5.4vw,80px);letter-spacing:-4px;line-height:1.08}
       <div class="wrap">
         <div class="game-heading"><div><span class="eyebrow">A SMALL DETOUR BEFORE YOU GO</span><h2 id="adventure-title">Your littlefolk.<br>One little adventure.</h2></div><div class="game-invite"><p>Jump the blocks. Catch the hearts.<br>Make it to 20 seconds.</p><button class="button primary" id="play-button" type="button">Let’s play <span aria-hidden="true">→</span></button></div></div>
         <div class="game-toolbar"><span id="game-message" role="status" aria-live="polite">Your friend is ready when you are.</span><div class="game-stats" aria-label="Game status"><span>TIME <strong id="time">20</strong></span><span>HEARTS <strong id="score">0</strong></span><span>TRIES <strong id="lives">3</strong></span></div></div>
-        <div class="game-field" id="game-field"><canvas id="game" tabindex="0" role="application" aria-label="Littlefolk jump game. Press Space or Up Arrow to jump, or tap the field. Three tries, twenty seconds. Press Escape to pause."></canvas><div class="game-overlay" id="game-overlay"><span class="overlay-kicker">SIDE QUEST / 001</span><strong>Not every jump lands.<br>That’s half the fun.</strong><span>Hit play. Your character comes along.</span></div></div>
-        <div class="game-under"><span><kbd>SPACE</kbd> or <kbd>↑</kbd> to jump <span class="dot-separator">·</span> tap on mobile</span><span id="best-label">A little play goes a long way.</span><button class="text-button" id="back-to-studio" type="button">Make another friend ↗</button></div>
+        <div class="game-field" id="game-field"><canvas id="game" tabindex="0" role="application" aria-label="Littlefolk jump game. Click, tap or press Space to start and jump. Up Arrow also jumps. Three tries, twenty seconds. Press Escape to pause."></canvas><div class="game-overlay" id="game-overlay"><span class="overlay-kicker">SIDE QUEST / 001</span><strong>Not every jump lands.<br>That’s half the fun.</strong><span id="game-overlay-caption">Your character comes along.</span><button class="button primary" id="field-play-button" type="button">Play game <span aria-hidden="true">→</span></button></div></div>
+        <div class="game-under"><span>Click, tap or <kbd>SPACE</kbd> to play &amp; jump</span><span id="best-label">A little play goes a long way.</span><button class="text-button" id="back-to-studio" type="button">Make another friend ↗</button></div>
         <div class="footer-bottom"><a class="brand" href="#top">littlefolk<span class="brand-dot">.</span></a><span>Made for the fun of it.</span><details class="prototype-note"><summary>About this playground</summary><p>This working prototype builds characters from pixel parts: cat, bunny, dog, robot or creature, plus colors, moods and accessories. It doesn’t use an AI image-generation service.</p></details></div>
       </div>
     </footer>
@@ -207,25 +210,35 @@ h1{font-size:clamp(56px,5.4vw,80px);letter-spacing:-4px;line-height:1.08}
   const game = { mode: 'idle', elapsed: 0, score: 0, lives: 3, y: 0, velocity: 0, invulnerable: 0, spawn: .8, obstacles: [], hearts: [], particles: [], phase: 0 };
   const playerSize = () => width < 600 ? 48 : 60;
   const playerX = () => width < 600 ? 40 : 75;
+  const onScreen = () => { const r = canvas.getBoundingClientRect(); return r.bottom > 0 && r.top < innerHeight; };
   function resize() {
     const r = canvas.getBoundingClientRect(), ratio = Math.min(devicePixelRatio || 1, 2);
     width = r.width; height = r.height; ground = height - 35;
     canvas.width = Math.round(width * ratio); canvas.height = Math.round(height * ratio); ctx.setTransform(ratio, 0, 0, ratio, 0, 0); ctx.imageSmoothingEnabled = false;
-    if (game.mode === 'running') pauseGame('Paused after resizing. Ready when you are.');
     drawGame();
   }
-  new ResizeObserver(resize).observe(canvas);
-  new IntersectionObserver(entries => { visible = entries[0].isIntersecting; if (!visible && game.mode === 'running') pauseGame('Paused while you’re away.'); if (visible) drawGame(); }, { threshold: .1 }).observe(canvas);
+  if (typeof ResizeObserver !== 'undefined') new ResizeObserver(resize).observe(canvas);
+  else { window.addEventListener('resize', resize); resize(); }
+  function updateVisibility() { visible = onScreen(); if (!visible && game.mode === 'running') pauseGame('Paused while you’re away.'); if (visible) drawGame(); }
+  if (typeof IntersectionObserver !== 'undefined') new IntersectionObserver(updateVisibility, { threshold: .1 }).observe(canvas);
+  else { window.addEventListener('scroll', updateVisibility, { passive: true }); updateVisibility(); }
   function resetGame() {
     Object.assign(game, { mode: 'idle', elapsed: 0, score: 0, lives: 3, y: 0, velocity: 0, invulnerable: 0, spawn: .8, obstacles: [], hearts: [], particles: [], phase: 0 });
     $('play-button').innerHTML = 'Let’s play <span aria-hidden="true">→</span>'; $('game-overlay').classList.remove('hidden');
     $('game-overlay').querySelector('strong').innerHTML = 'Not every jump lands.<br>That’s half the fun.';
-    $('game-overlay').querySelector('span:last-child').textContent = 'Hit play. Your character comes along.';
+    $('game-overlay-caption').textContent = 'Your character comes along.';
+    $('field-play-button').innerHTML = 'Play game <span aria-hidden="true">→</span>';
     $('game-message').textContent = 'Your friend is ready when you are.'; $('game-field').classList.remove('is-playing'); updateStats();
   }
   function updateStats() { $('time').textContent = Math.max(0, Math.ceil(20 - game.elapsed)); $('score').textContent = game.score; $('lives').textContent = game.lives; $('best-label').textContent = best ? `YOUR BEST / ${best} HEART${best === 1 ? '' : 'S'}` : 'A little play goes a long way.'; }
   function playGame() {
     if (game.mode !== 'paused') resetGame();
+    // An explicit start must reveal the playfield, including in short embedded panels.
+    const scrollBehavior = document.documentElement.style.scrollBehavior;
+    document.documentElement.style.scrollBehavior = 'auto';
+    canvas.scrollIntoView({ block: 'center', behavior: 'auto' });
+    document.documentElement.style.scrollBehavior = scrollBehavior;
+    visible = onScreen();
     game.mode = 'running'; last = performance.now(); $('game-overlay').classList.add('hidden'); $('game-field').classList.add('is-playing');
     $('play-button').innerHTML = 'Pause <span aria-hidden="true">Ⅱ</span>'; $('game-message').textContent = `${names[character.color]} is on the move. Jump the blocks!`; canvas.focus({ preventScroll: true });
   }
@@ -237,14 +250,23 @@ h1{font-size:clamp(56px,5.4vw,80px);letter-spacing:-4px;line-height:1.08}
     game.mode = 'finished'; $('game-field').classList.remove('is-playing'); $('play-button').innerHTML = 'Play again <span aria-hidden="true">↻</span>';
     if (game.score > best) { best = game.score; try { localStorage.setItem('littlefolk-best', String(best)); } catch (_) {} }
     $('game-overlay').querySelector('strong').innerHTML = win ? 'Tiny hero.<br>Big finish.' : 'A tiny tumble.<br>Another try?';
-    $('game-overlay').querySelector('span:last-child').textContent = `${game.score} heart${game.score === 1 ? '' : 's'} collected. ${win ? 'Adventure complete.' : 'Every littlefolk gets a do-over.'}`;
+    $('game-overlay-caption').textContent = `${game.score} heart${game.score === 1 ? '' : 's'} collected. ${win ? 'Adventure complete.' : 'Every littlefolk gets a do-over.'}`;
+    $('field-play-button').innerHTML = 'Play again <span aria-hidden="true">↻</span>';
     $('game-overlay').classList.remove('hidden'); $('game-message').textContent = win ? 'Twenty seconds. One very good little adventure.' : 'Not every jump lands. You can always try again.'; updateStats();
   }
   function jump() { if (game.mode === 'running' && game.y === 0) game.velocity = -440; }
+  function startOrJump() { if (game.mode !== 'running') playGame(); jump(); }
   $('play-button').addEventListener('click', () => game.mode === 'running' ? pauseGame() : playGame());
-  canvas.addEventListener('keydown', e => { if (['Space', 'ArrowUp'].includes(e.code)) { e.preventDefault(); if (!e.repeat) jump(); } if (e.code === 'Escape') { e.preventDefault(); if (game.mode === 'running') pauseGame(); else if (game.mode === 'paused') playGame(); } });
+  $('field-play-button').addEventListener('click', playGame);
+  document.addEventListener('keydown', e => {
+    const editableOrControl = e.target.closest?.('input,textarea,select,button,a,summary,[contenteditable="true"]');
+    if (editableOrControl || !onScreen()) return;
+    if (['Space', 'ArrowUp'].includes(e.code)) { e.preventDefault(); if (!e.repeat) startOrJump(); }
+    if (e.code === 'Escape' && game.mode !== 'idle' && game.mode !== 'finished') { e.preventDefault(); if (game.mode === 'running') pauseGame(); else if (game.mode === 'paused') playGame(); }
+  });
+  canvas.addEventListener('click', () => { if (game.mode !== 'running') startOrJump(); });
   canvas.addEventListener('pointerdown', e => { if (game.mode === 'running') { e.preventDefault(); jump(); } });
-  window.addEventListener('blur', () => pauseGame('Paused while you’re away.'));
+  // Embedded browser focus changes are not the same as leaving the visible game.
   document.addEventListener('visibilitychange', () => { if (document.hidden) pauseGame('Paused while you’re away.'); });
   $('back-to-studio').addEventListener('click', () => { pauseGame(); $('studio').scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' }); $('prompt').focus({ preventScroll: true }); });
   function pixelHeart(x, y, size, color = '#173fff') {
@@ -298,7 +320,7 @@ h1{font-size:clamp(56px,5.4vw,80px);letter-spacing:-4px;line-height:1.08}
       ctx.drawImage(sprite, playerX(), Math.round(ground - size + game.y + 2), size, size);
     }
     for (const p of game.particles) { ctx.globalAlpha = Math.min(1, p.life * 2); ctx.fillStyle = '#173fff'; ctx.fillRect(Math.round(p.x), Math.round(p.y), 4, 4); } ctx.globalAlpha = 1;
-    if (game.mode === 'paused') { ctx.fillStyle = '#fafafaaa'; ctx.fillRect(0, 0, width, height); ctx.fillStyle = '#173fff'; ctx.font = 'bold 14px "Courier New"'; ctx.textAlign = 'center'; ctx.fillText('A LITTLE BREATHER. HIT RESUME.', width / 2, height / 2); ctx.textAlign = 'left'; }
+    if (game.mode === 'paused') { ctx.fillStyle = '#fafafaaa'; ctx.fillRect(0, 0, width, height); ctx.fillStyle = '#173fff'; ctx.font = 'bold 13px "Courier New"'; ctx.textAlign = 'center'; ctx.fillText('PAUSED · TAP OR SPACE TO RESUME', width / 2, height / 2); ctx.textAlign = 'left'; }
   }
   function frame(t) { const dt = Math.min((t - last) / 1000 || 0, .05); last = t; if (game.mode === 'running') update(dt); if (visible) drawGame(); requestAnimationFrame(frame); }
   updateCharacter('Your littlefolk is ready for a few new ideas.'); resetGame(); requestAnimationFrame(frame);
